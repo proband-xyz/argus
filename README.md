@@ -15,11 +15,17 @@ resists realistic attack patterns, and what each defense layer contributes.
 
 | Resource | Where |
 |---|---|
+| **Python package** | [`argus-safety` on PyPI](https://pypi.org/project/argus-safety/) — `pip install argus-safety` |
 | **Gateway model** (LoRA on Llama-3.3-70B) | [`proband-xyz/argus-baseline-v3-prod-r2`](https://huggingface.co/proband-xyz/argus-baseline-v3-prod-r2) |
 | **Documentation site** | https://proband.xyz/argus *(coming)* |
 | **Issues & discussion** | [GitHub Issues](https://github.com/proband-xyz/argus/issues) |
 | **License (code)** | Apache 2.0 |
 | **License (model)** | Llama 3.3 Community |
+
+[![PyPI](https://img.shields.io/pypi/v/argus-safety.svg?label=PyPI)](https://pypi.org/project/argus-safety/)
+[![Python](https://img.shields.io/pypi/pyversions/argus-safety.svg)](https://pypi.org/project/argus-safety/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/proband-xyz/argus/blob/main/LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon-lightgrey.svg)](#prerequisites)
 
 ---
 
