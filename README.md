@@ -282,10 +282,63 @@ Two independently-authored attack benchmarks against `argus-baseline-v3-prod-r2`
 | corpus/v1 adversarial (10 MITRE-mapped IAM families) | 198 | 10.1% | 0% | **PASS** |
 
 Additional benchmarks will be added as results are independently verified.
-Hardened variants (`argus-deliberative` SFT+counter-corpus,
-`argus-constitutional` SFT + Constitutional AI SL, `argus-rr` with
-Representation Rerouting) are planned and will publish their own defense
-profiles when ready.
+
+---
+
+## Variants & the layered-defense matrix
+
+Argus is designed as **two orthogonal axes** that compose:
+
+- **Gateway training variants** (replace the LoRA adapter) — capability /
+  safety frontier ablations against the same threat model
+- **Runtime defense layers** (composable, gateway-agnostic) — schema guard,
+  intent critic, optional audit-log truth verifier
+
+The framework's deliverable is the **layered-defense matrix** —
+(variant × defense permutation × benchmark) cells, each filled with
+measured grant rate and target-hit rate. Researchers pick a row + column
+based on their compute / complexity / integration budget and see what
+defense profile they get.
+
+```
+                       │ no defenses │ +guard │ +critic │ +guard+critic │
+─────────────────────  │  ─────────  │ ─────  │ ─────── │ ─────────────  │
+argus-baseline         │   v0.1 ✓    │ v0.2   │ v0.2    │ v0.2           │
+argus-deliberative     │   v0.2      │ v0.2   │ v0.2    │ v0.2           │
+argus-constitutional   │   future    │ future │ future  │ future         │
+argus-rr               │   future    │ future │ future  │ future         │
+argus-refusal-direction│   future    │ future │ future  │ future         │
+```
+
+### Gateway training ladder
+
+| Variant | Method | Status |
+|---|---|---|
+| **argus-baseline** (v3-prod-r2) | SFT only — refusal training + persona/RBAC + corpus/v1 adversarial | **Published** |
+| **argus-deliberative** (v3-prod-r3) | SFT + targeted counter-corpus (no DPO) | In flight — v0.2 |
+| **argus-constitutional** (v3-prod-r4) | + Constitutional AI SL phase ([Bai et al. 2022](https://arxiv.org/abs/2212.08073)) | Conditional |
+| **argus-rr** | + Representation Rerouting ([Zou et al. 2024](https://arxiv.org/abs/2406.04313)) | Future |
+| **argus-refusal-direction** | + refusal-direction injection ([Arditi et al. 2024](https://arxiv.org/abs/2406.11717)) | Future |
+
+DPO was considered but pulled from the ladder per
+[STAIR-DPO](https://arxiv.org/abs/2501.13095)'s documented benign-accuracy
+collapse to 77%, which would break Argus PASS 5/6. The counter-corpus
+approach in `argus-deliberative` is the SFT-shaped substitute.
+
+Full RLHF / PPO is off the ladder — requires three copies of a 70B model
+in memory (reward + policy + reference), won't fit on 192 GB.
+
+### Runtime defense layers
+
+| Layer | Mechanism | Where it sits | Status |
+|---|---|---|---|
+| **Audit-namespace schema guard** | Namespace-pattern check; blocks sensitive tools targeting registered audit-stack principals | After executor, before tool invocation | **Published** (`argus.defenses.audit_namespace_guard`) |
+| **Intent critic** | Small adversarial judge (Qwen-7B); overrides gateway APPROVE to REJECT for forbidden actions | After gateway, before executor | **Published** (`argus.defenses.intent_critic`) |
+| **Audit-log truth verifier** | Out-of-band check of cited SOPs / audit-log claims against simulated store | After gateway, before executor | Planned (v0.2 or later) |
+
+Defense layers compose with any gateway variant — every cell in the matrix
+above runs the same eval harness with the appropriate `--guard-mode` /
+`--critic-mode` flags.
 
 ---
 
@@ -395,9 +448,9 @@ production credentials are involved in any training, eval, or example.
 
 Contributions are welcome. The roadmap:
 
-1. **Hardened variants** — `argus-deliberative` (SFT + counter-corpus),
-   `argus-constitutional` (+ Constitutional AI SL phase),
-   `argus-rr` (+ Representation Rerouting).
+1. **v0.2 release** — argus-deliberative variant + 2-row × 4-col layered
+   ablation matrix on the docs site. See "Variants & the layered-defense
+   matrix" above and `CHANGELOG.md`.
 2. **Argus-mini** — smaller-base-model variant (7B/8B) for sub-10-minute
    quickstart.
 3. **mkdocs documentation site** — auto-deployed to GitHub Pages.

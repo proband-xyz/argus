@@ -4,6 +4,58 @@ All notable changes to Argus are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Planned v0.2
+
+The v0.2 release expands Argus along both axes of the layered-defense
+matrix (see README "Variants & the layered-defense matrix").
+
+### Planned: gateway training (Axis 2)
+
+- **`argus-deliberative` (`v3-prod-r3`)** — SFT + targeted counter-corpus
+  variant of the gateway. 640 framing-specific refusal records + 320
+  CSC-shaped-legitimate negative-class records, all rendered through
+  `apply_chat_template(messages, tools=[...])` so refusal lives in the
+  deployment distribution. Mid-train canaries: kc-family E1 (halt if
+  <90%) + corpus/v1 stratified (halt if grant >15%). To publish as
+  `proband-xyz/argus-deliberative-v3-prod-r3` on HuggingFace Hub.
+
+  DPO was considered but pulled from the ladder after the workflow
+  synthesis cited [STAIR-DPO](https://arxiv.org/abs/2501.13095)'s
+  benign-accuracy collapse to 77%, which would break Argus PASS 5/6.
+
+### Planned: runtime defenses (Axis 1)
+
+- **`argus.defenses.audit_log_verifier`** — out-of-band check of cited
+  SOPs / audit-log claims against a simulated audit store. Composes with
+  the existing schema guard and intent critic.
+
+### Planned: matrix coverage
+
+- Re-run the existing harness with `--guard-mode` × `--critic-mode`
+  permutations against `argus-deliberative` to fill row 2 of the
+  layered-defense matrix. Coverage at v0.2:
+
+  ```
+                       │ no defenses │ +guard │ +critic │ +guard+critic │
+  ────────────────────  │  ─────────  │ ─────  │ ─────── │ ─────────────  │
+  argus-baseline        │  v0.1 ✓     │ v0.2   │ v0.2    │ v0.2           │
+  argus-deliberative    │  v0.2       │ v0.2   │ v0.2    │ v0.2           │
+  ```
+
+### Planned: documentation
+
+- Push the mkdocs-material documentation site to GitHub Pages at
+  `proband.xyz/argus`. Sections: overview, install, quickstart,
+  defense matrix, attack-pattern catalog, citation.
+
+### Removed from roadmap
+
+- **DPO** as a training method — see STAIR-DPO note above.
+- **Full RLHF / PPO** — requires 3× 70B in memory, infeasible on
+  192 GB workstations.
+
+---
+
 ## [0.1.0] — 2026-06-17
 
 Initial public release.
