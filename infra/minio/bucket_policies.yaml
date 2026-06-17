@@ -1,0 +1,53 @@
+# MinIO bucket / policy / persona declarative spec.
+#
+# Consumed by:
+#   - infra/minio/setup_personas.sh   (creates buckets, policies, svcaccts)
+#   - tests/test_minio_persona_setup.py (parses + validates schema)
+#
+# Per-persona service-account route (NOT OIDC) — see INVESTIGATION.md
+# for why. Each persona is bound 1:1 to a MinIO IAM policy; the bootstrap
+# script mints a service-account per persona and attaches the policy.
+#
+# Bucket layout matches the existing minio-init bootstrap in
+# docker-compose.yml (exports, pii-data, audit-archive) plus the policy
+# semantics implied by docs/plans/rbac_token_passthrough.md §1.
+
+buckets:
+  - name: exports
+    description: General data exports — the default scratchpad.
+  - name: pii-data
+    description: PII; restricted to compliance + itadmin.
+  - name: audit-archive
+    description: Compliance audit archive — append-mostly, read by compliance + itadmin.
+
+# Each policy declares per-bucket access intent. The setup script
+# expands this into MinIO IAM policy JSON (see _render_policy_doc in
+# the script). Three intents:
+#   readonly  -> s3:GetObject, s3:ListBucket
+#   readwrite -> readonly + s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload
+#   denied    -> explicit Deny on all s3:* (defense in depth; usually
+#                redundant with not granting access, but compliance
+#                deserves the explicit Deny line).
+policies:
+  helpdesk-readonly:
+    readonly: [exports]
+  manager-rw:
+    readwrite: [exports]
+    readonly: [pii-data]
+  itadmin-fullaccess:
+    readwrite: [exports, pii-data, audit-archive]
+  compliance-readonly:
+    readonly: [pii-data, audit-archive]
+    denied: [exports]
+
+# 1:1 map of Keycloak persona -> MinIO IAM policy. All 8 personas from
+# infra/keycloak/realm.json must appear here; tests enforce this.
+persona_policy_map:
+  alice.helpdesk: helpdesk-readonly
+  bob.helpdesk: helpdesk-readonly
+  carol.helpdesk: helpdesk-readonly
+  dave.manager: manager-rw
+  erin.manager: manager-rw
+  frank.itadmin: itadmin-fullaccess
+  grace.itadmin: itadmin-fullaccess
+  henry.compliance: compliance-readonly

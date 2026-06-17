@@ -1,0 +1,135 @@
+# MCP server catalog for the Argus enterprise stack.
+#
+# Consumed by `stac_research.providers.mcp_bridge.MCPBridge.from_config`,
+# which loads this file as a list of dicts and builds a sync-callable
+# bridge over the aggregated tool catalog.
+#
+# `${VAR}` references are expanded against the process environment at load
+# time; populate them by `source`-ing `infra/.env` (or running through
+# `make mcp-test`, which does that for you). Never hard-code credentials.
+#
+# All endpoints assume the v3 stack is up on localhost (see infra/docker-compose.yml).
+# Each server runs as a stdio subprocess — no external ports are claimed.
+
+# ---------------------------------------------------------------------------
+# Backed-service MCP servers (high realism)
+# ---------------------------------------------------------------------------
+
+- alias: pg
+  transport: stdio
+  # crystaldba/postgres-mcp. Builds pglast from source under uvx; pin to
+  # Python 3.12 because pglast 7.2 fails to compile on 3.14 (the system
+  # default). `unrestricted` is the right choice here because the harness
+  # *wants* the agent to have full SQL surface for chain testing.
+  command: ["uvx", "--python", "3.12", "postgres-mcp", "--access-mode=unrestricted"]
+  env:
+    DATABASE_URI: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
+
+- alias: os
+  transport: stdio
+  # cr7258/elasticsearch-mcp-server speaks both ES and OpenSearch; the
+  # `opensearch-mcp-server` console-script binds it to OpenSearch mode.
+  command: ["uvx", "--from", "elasticsearch-mcp-server", "opensearch-mcp-server"]
+  env:
+    OPENSEARCH_HOSTS: "http://localhost:9200"
+
+# RBAC-enforced
+- alias: minio
+  transport: stdio
+  # Official MinIO AIStor MCP. Distributed only as a container image, so we
+  # invoke it via `docker run -i`. `host.docker.internal` resolves to the
+  # macstudio host from inside the container; the actual MinIO API is on
+  # 127.0.0.1:9000 of that host. `--allow-*` flags expand from read-only.
+  # Per-persona MinIO IAM service-account keys are injected at session-spawn
+  # time via `{{persona:minio_*}}` (resolved from
+  # infra/minio/persona_service_accounts.json — see INVESTIGATION.md).
+  command:
+    - docker
+    - run
+    - -i
+    - --rm
+    - -e
+    - MINIO_ENDPOINT=host.docker.internal:9000
+    - -e
+    - MINIO_ACCESS_KEY={{persona:minio_access_key|fallback:MINIO_ACCESS_KEY}}
+    - -e
+    - MINIO_SECRET_KEY={{persona:minio_secret_key|fallback:MINIO_SECRET_KEY}}
+    - -e
+    - MINIO_USE_SSL=false
+    - quay.io/minio/aistor/mcp-server-aistor:latest
+    - --allow-write
+    - --allow-delete
+    - --allow-admin
+
+# RBAC-enforced
+- alias: kc
+  transport: stdio
+  # @octodet/keycloak-mcp — chosen over sshaaf/keycloak-mcp-server because
+  # the latter is SSE-only on port 8080, which collides with Keycloak
+  # itself. Octodet is npm + stdio, talks straight to the admin API.
+  # Per-persona credentials are injected via `{{persona:keycloak_*}}`;
+  # Keycloak natively enforces realm-management roles when these creds
+  # belong to a non-admin persona.
+  command: ["npx", "-y", "@octodet/keycloak-mcp"]
+  env:
+    KEYCLOAK_URL: "http://localhost:8080"
+    KEYCLOAK_ADMIN: "{{persona:keycloak_username|fallback:KEYCLOAK_ADMIN}}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{persona:keycloak_password|fallback:KEYCLOAK_ADMIN_PASSWORD}}"
+    KEYCLOAK_REALM: "master"
+
+# RBAC-enforced
+- alias: gt
+  transport: stdio
+  # Sqcows/forgejo-mcp (npm: @ric_/forgejo-mcp) — Forgejo/Gitea-compatible,
+  # 103 tools across repos/issues/PRs/orgs/users/admin. Per-persona PATs are
+  # minted by `scripts/bootstrap_gitea_pats.py` and injected via
+  # `{{persona:gitea_pat}}`.
+  command: ["npx", "-y", "@ric_/forgejo-mcp"]
+  env:
+    FORGEJO_URL: "http://localhost:3000"
+    FORGEJO_TOKEN: "{{persona:gitea_pat|fallback:GITEA_API_TOKEN}}"
+
+- alias: mail
+  transport: stdio
+  # caxilomo/mailpit-mcp — small (5 tools) but works against Mailpit's
+  # HTTP API and runs locally. Built from source on macstudio because
+  # the package isn't published to npm (yet).
+  command:
+    - node
+    - /Users/seantodd/build/mailpit-mcp-cax/server.mjs
+  env:
+    MAILPIT_URL: "http://localhost:8025"
+
+# ---------------------------------------------------------------------------
+# Anthropic-reference primitives (broad tool surface, no backing service)
+# ---------------------------------------------------------------------------
+
+- alias: fs
+  transport: stdio
+  # @modelcontextprotocol/server-filesystem, sandboxed to /tmp/stac-fs to
+  # keep agent file activity contained. Create the directory before use:
+  #   mkdir -p /tmp/stac-fs
+  command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/stac-fs"]
+
+- alias: git
+  transport: stdio
+  # mcp-server-git — operates on a single repo path passed at startup.
+  # /tmp/stac-git is git-init'd by the smoke test if missing.
+  command: ["uvx", "mcp-server-git", "--repository", "/tmp/stac-git"]
+
+- alias: time
+  transport: stdio
+  # mcp-server-time — get/convert times in arbitrary IANA timezones.
+  command: ["uvx", "mcp-server-time"]
+
+- alias: fetch
+  transport: stdio
+  # mcp-server-fetch — single `fetch` tool that performs HTTP GETs and
+  # returns extracted text. Useful for exercising network egress paths.
+  command: ["uvx", "mcp-server-fetch"]
+
+- alias: mem
+  transport: stdio
+  # @modelcontextprotocol/server-memory — in-process knowledge-graph state
+  # store. Persists for the lifetime of the bridge process only.
+  command: ["npx", "-y", "@modelcontextprotocol/server-memory"]

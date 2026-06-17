@@ -27,6 +27,7 @@ resists realistic attack patterns, and what each defense layer contributes.
 
 ```
 argus/
+├── bootstrap.sh                     # one-command Mac install (see below)
 ├── argus/
 │   └── defenses/
 │       ├── audit_namespace_guard/   # schema-layer runtime check
@@ -38,6 +39,10 @@ argus/
 ├── examples/
 │   ├── quickstart.py                # 30-line gateway-in-isolation example
 │   └── run_eval.py                  # full pipeline (gateway + critic + executor + guard)
+├── infra/                           # 7-service Docker stack (Keycloak, Gitea, Postgres, etc.)
+│   ├── docker-compose.yml
+│   ├── Makefile                     # make up | down | health | reset
+│   └── …
 └── tests/
     ├── test_guard.py                # 19 unit tests
     └── test_critic.py               # 12 unit tests
@@ -55,28 +60,87 @@ argus/
 | RAM | 96 GB | 192 GB |
 | Disk | 200 GB free | 500 GB free |
 | OS | macOS 14+ | macOS 15+ |
+| Docker | Docker Desktop 4.30+ | Latest |
+| Python | 3.10+ | 3.12 |
 
 Intel Macs are unsupported — `mlx-lm` requires Apple Silicon. Windows and
 Linux are out of scope for v1.
 
-### Install steps
+### One-command install
 
 ```bash
-# 1. Python + venv
+git clone https://github.com/proband-xyz/argus.git
+cd argus
+./bootstrap.sh
+```
+
+`bootstrap.sh` is idempotent. It:
+
+1. Verifies the platform (macOS + Apple Silicon, macOS 14+).
+2. Verifies Docker Desktop is running and Python 3.10+ is available.
+3. Creates `.venv` and installs Argus (`pip install -e .[dev]`).
+4. Confirms `mlx-lm` sees the Metal GPU.
+5. Starts the 7-service enterprise stack via `docker compose`.
+6. Waits for every service to report healthy.
+7. Prints next-step commands.
+
+Wall-clock: ~2 minutes plus the (one-time) container image pulls on first run.
+
+### Manual install
+
+If you prefer to step through manually:
+
+```bash
+# 1. Python venv + Argus (editable install)
 python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
+pip install -e ".[dev]"
 
-# 2. The Argus package + mlx-lm runtime
-pip install argus-safety   # or: pip install -e .  (from a git clone)
-
-# 3. Verify mlx-lm sees the GPU
+# 2. Verify mlx-lm sees the GPU
 python -c "import mlx.core as mx; print('Metal device:', mx.default_device())"
 # expected: Metal device: Device(gpu, 0)
+
+# 3. Start the enterprise stack
+cd infra && make up && make health
 ```
+
+> **PyPI:** `argus-safety` is reserved on PyPI but not yet published.
+> Until then, install from this repo with `pip install -e .` or
+> `pip install git+https://github.com/proband-xyz/argus.git`.
+
+### Models
 
 The base model (`mlx-community/Llama-3.3-70B-Instruct-bf16`, ~140 GB) and the
 LoRA adapter (`proband-xyz/argus-baseline-v3-prod-r2`, ~660 MB) download on
-first use.
+first use of `examples/quickstart.py` or `examples/run_eval.py`.
+
+### Enterprise stack
+
+`bootstrap.sh` starts these services via `docker compose` (all bound to
+`127.0.0.1` only):
+
+| Service | Port | Purpose | UI |
+|---|---:|---|---|
+| Keycloak | 8080 | Identity + RBAC | http://localhost:8080 (admin / admin) |
+| PostgreSQL | 5432 | Asset + audit DB | — |
+| Gitea | 3000 | Git + issue tracker | http://localhost:3000 |
+| MinIO | 9000 / 9001 | Object storage | http://localhost:9001 |
+| Mailpit | 1025 / 8025 | SMTP capture | http://localhost:8025 |
+| OpenSearch | 9200 | Search + audit-log index | — |
+
+Resource footprint with everything running: ~3 GB RAM and ~5 GB disk
+(plus volumes that grow with use). All defaults are intentionally weak
+(see `infra/.env.example`) and must not be reused outside this prototype.
+
+Stack ops:
+
+```bash
+cd infra
+make health       # probe each service
+make logs         # tail logs from all services
+make down         # stop (preserves volumes)
+make reset        # DESTRUCTIVE: stop + wipe all volumes
+```
 
 ---
 
