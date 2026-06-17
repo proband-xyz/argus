@@ -104,9 +104,10 @@ python -c "import mlx.core as mx; print('Metal device:', mx.default_device())"
 cd infra && make up && make health
 ```
 
-> **PyPI:** `argus-safety` is reserved on PyPI but not yet published.
-> Until then, install from this repo with `pip install -e .` or
-> `pip install git+https://github.com/proband-xyz/argus.git`.
+> **PyPI:** `argus-safety` is published.
+> `pip install argus-safety` gives you the defense layers + harness only;
+> the probe sets, examples, and the `infra/` Docker stack come from this
+> repo. Use `bootstrap.sh` or `git clone` for the full framework.
 
 ### Models
 
